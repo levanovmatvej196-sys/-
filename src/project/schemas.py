@@ -1,22 +1,26 @@
-# Формат тела ответа 
-from pydantic import BaseModel
+from typing import Annotated
+
+from pydantic import BaseModel, StringConstraints
 
 
 class StatusResponse(BaseModel):
     status: str
 
+
 class UserResponse(BaseModel):
-    email: str
-
-
-class User(BaseModel):
-    login: str
     name: str
     email: str
-    password: str
 
-class Pet(BaseModel):
+
+class PetCreate(BaseModel):
     id: int
     name: str
-    species: str   # вид: кошка, собака...
+    species: str
     age: int
+
+
+class UserCreate(BaseModel):
+    login: Annotated[str, StringConstraints(min_length=1, strip_whitespace=True)]
+    name: Annotated[str, StringConstraints(min_length=6, max_length=20)]
+    email: Annotated[str, StringConstraints(min_length=1, strip_whitespace=True)]
+    password: Annotated[str, StringConstraints(min_length=6, max_length=32)]

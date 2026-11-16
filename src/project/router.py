@@ -1,53 +1,59 @@
-# Обрабатываем соединение 
-from fastapi import APIRouter,status , HTTPException
+from typing import Annotated
 
-from project.schemas import StatusResponse,UserResponse, User,  Pet
-router =APIRouter()
+from fastapi import APIRouter, Depends, Request, status
 
-users_database=dict[str,User]()
-pets_database: dict[int, Pet] = {}
+from project.models import Pet
+from project.schemas import PetCreate, StatusResponse, UserCreate, UserResponse
+from project.services import PetService, UserService
 
-@router.get("/status")
-def get_status()-> StatusResponse:
-    return StatusResponse(status='ok')
+router = APIRouter()
 
 
-@router.get("/status")
-def get_email()-> UserResponse:
-    return UserResponse(email='Levkhh')
-
-@router.post("/signup")
-def signup(user:User):
-    global users_database
-    if user.login in users_database:
-        raise HTTPException(409)
-    users_database[user.login]=user
-
-@router.get("/users/{login}")
-def get_user(login: str)->UserResponse:
-    if login not in users_database:
-        raise HTTPException(status.HTTP_404_NOT_FOUND)
-    user=users_database[login]
-    return UserResponse(
-        name=user.name,
-        email=user.email,
-        )
-
-@router.post("/pets", status_code=status.HTTP_201_CREATED)
-def create_pet(pet: Pet) -> Pet:
-    if pet.id in pets_database:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Животное с таким id уже существует")
-    pets_database[pet.id] = pet
-    return pet
-
-@router.get("/pets/{pet_id}")
-def get_pet(pet_id: int) -> Pet:
-    if pet_id not in pets_database:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Животное не найдено")
-    return pets_database[pet_id]
+def get_user_service(request: Request) -> UserService:
+    return request.app.state.user_service
 
 
-# Доп. задание
-@router.get("/pets")
-def get_all_pets() -> list[Pet]:
-    return list(pets_database.values())
+def get_pet_service(request: Request) -> PetService:
+    return request.app.state.pet_service
+
+
+UserServiceDep = Annotated[UserService, Depends(get_user_service)]
+PetServiceDep = Annotated[PetService, Depends(get_pet_service)]
+
+
+@router.get("/status", response_model=StatusResponse)
+def get_status() -> StatusResponse:
+    return StatusResponse(status="ok")
+
+
+@router.post("/signup", response_model=UserResponse)
+async def signup(user: UserCreate, user_service: UserServiceDep) -> UserResponse:
+    created_user = await user_service.signup(user)
+    return UserResponse(name=created_user.name, email=created_user.email)
+
+
+@router.get("/users/{login}", response_model=UserResponse)
+async def get_user(login: str, user_service: UserServiceDep) -> UserResponse:
+    user = await user_service.get_by_login(login)
+    return UserResponse(name=user.name, email=user.email)
+
+
+@router.get("/users", response_model=list[UserResponse])
+async def get_all_users(user_service: UserServiceDep) -> list[UserResponse]:
+    users = await user_service.get_all()
+    return [UserResponse(name=user.name, email=user.email) for user in users]
+
+
+@router.post("/pets", status_code=status.HTTP_201_CREATED, response_model=Pet)
+async def create_pet(pet: PetCreate, pet_service: PetServiceDep) -> Pet:
+    return await pet_service.create(pet)
+
+
+@router.get("/pets/{pet_id}", response_model=Pet)
+async def get_pet(pet_id: int, pet_service: PetServiceDep) -> Pet:
+    return await pet_service.get_by_id(pet_id)
+
+
+@router.get("/pets", response_model=list[Pet])
+async def get_all_pets(pet_service: PetServiceDep) -> list[Pet]:
+    return await pet_service.get_all()
